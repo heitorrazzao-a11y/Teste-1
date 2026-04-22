@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta CNPJ - Enterprise Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --accent: #38bdf8;
+            --border: #334155;
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --danger: #f87171;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg); color: var(--text-main); padding: 20px; display: flex; justify-content: center; }
+        .dashboard { width: 100%; max-width: 1300px; display: flex; flex-direction: column; gap: 20px; }
+
+        .search-container {
+            background: var(--card);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        input {
+            flex: 1;
+            min-width: 280px;
+            background: #0f172a;
+            border: 1px solid var(--border);
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            outline: none;
+        }
+        input:focus { border-color: var(--accent); }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            transition: 0.2s;
+        }
+        .btn-search { background: var(--accent); color: #000; }
+        .btn-clear { background: #334155; color: var(--text-main); }
+        .btn-clear:hover { background: var(--danger); }
+        .export-btns { display: none; gap: 8px; }
+        .btn-xlsx { background: var(--success); color: #000; }
+
+        .content-grid { display: none; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+        .card-title { 
+            font-size: 0.7rem; 
+            color: var(--text-dim); 
+            text-transform: uppercase; 
+            letter-spacing: 1.5px; 
+            margin-bottom: 20px; 
+            border-bottom: 1px solid var(--border); 
+            padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .data-row { margin-bottom: 16px; }
+        .data-label { font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }
+        .data-value { font-size: 0.95rem; font-weight: 500; color: var(--text-main); }
+
+        .span-2 { grid-column: span 2; }
+        .full-width { grid-column: span 3; }
+        .status-pill { padding: 4px 10px; border-radius: 99px; font-size: 0.7rem; background: var(--success); color: #000; font-weight: 800; }
+
+        .list-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 10px; }
+        .item-box { 
+            background: #0f172a; 
+            padding: 12px; 
+            border-radius: 8px; 
+            border-left: 4px solid var(--border);
+            font-size: 0.8rem;
+        }
+        .item-box.principal { border-left-color: var(--success); }
+
+        #loading { display: none; text-align: center; padding: 30px; color: var(--accent); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <div class="search-container">
+        <input type="text" id="cnpjInput" placeholder="Digite o CNPJ (Ex: 50.411.662/0001-22 ou apenas números)" maxlength="18">
+        <button class="btn btn-search" onclick="buscar()">Pesquisar</button>
+        <button class="btn btn-clear" onclick="limpar()">Limpar</button>
+        <div class="export-btns" id="exportArea">
+            <button class="btn btn-xlsx" onclick="exportarExcel()">Exportar Excel</button>
+        </div>
+    </div>
+
+    <div id="loading">CONSULTANDO DADOS ATUALIZADOS...</div>
+
+    <div class="content-grid" id="mainDashboard">
+        
+        <div class="card span-2">
+            <div class="card-title">Identificação Empresarial <span id="stt" class="status-pill">STATUS</span></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="data-row"><div class="data-label">Razão Social</div><div class="data-value" id="rz_social">---</div></div>
+                <div class="data-row"><div class="data-label">Nome Fantasia</div><div class="data-value" id="nm_fantasia">---</div></div>
+                <div class="data-row"><div class="data-label">CNPJ</div><div class="data-value" id="cnpj_display" style="letter-spacing: 1px;">---</div></div>
+                <div class="data-row"><div class="data-label">Abertura </div><div class="data-value" id="dt_abertura">---</div></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Situação Fiscal</div>
+            <div class="data-row"><div class="data-label">Data da Situação</div><div class="data-value" id="dt_situacao">---</div></div>
+            <div class="data-row"><div class="data-label">Simples Nacional</div><div class="data-value" id="opt_simples">---</div></div>
+            <div class="data-row"><div class="data-label">Opção pelo MEI</div><div class="data-value" id="opt_mei">---</div></div>
+        </div>
+
+        <div class="card span-2">
+            <div class="card-title">Endereço e Contato</div>
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+                <div class="data-row"><div class="data-label">Logradouro e Número</div><div class="data-value" id="end_rua">---</div></div>
+                <div class="data-row"><div class="data-label">Bairro / CEP</div><div class="data-value" id="end_bairro">---</div></div>
+                <div class="data-row"><div class="data-label">Cidade / UF</div><div class="data-value" id="end_cidade">---</div></div>
+                <div class="data-row"><div class="data-label">E-mail</div><div class="data-value" id="email_info">---</div></div>
+                <div class="data-row"><div class="data-label">Telefone</div><div class="data-value" id="tel_info">---</div></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Informações Legais</div>
+            <div class="data-row"><div class="data-label">Capital Social</div><div class="data-value" id="cap_social" style="color: var(--success);">R$ 0,00</div></div>
+            <div class="data-row"><div class="data-label">Porte</div><div class="data-value" id="porte_desc">---</div></div>
+            <div class="data-row"><div class="data-label">Natureza Jurídica</div><div class="data-value" id="nat_juridica">---</div></div>
+        </div>
+
+        <div class="card full-width">
+            <div class="card-title">Atividades Econômicas (CNAEs)</div>
+            <div id="cnae_area" class="list-container"></div>
+        </div>
+
+        <div class="card full-width">
+            <div class="card-title">Quadro de Sócios e Administradores (QSA)</div>
+            <div id="socios_area" class="list-container"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let globalData = null;
+
+    // Formata para DD/MM/AAAA
+    function formatarDataCompleta(dataStr) {
+        if (!dataStr) return "---";
+        const clean = dataStr.replace(/\D/g, '');
+        if (clean.length === 8) {
+            let a, m, d;
+            if (dataStr.includes('-')) { [a, m, d] = dataStr.split('-'); } 
+            else { a = clean.substring(0, 4); m = clean.substring(4, 6); d = clean.substring(6, 8); }
+            return `${d}/${m}/${a}`;
+        }
+        return dataStr;
+    }
+
+    async function buscar() {
+        const input = document.getElementById('cnpjInput').value;
+        const cnpj = input.replace(/\D/g, ''); 
+
+        if (cnpj.length !== 14) {
+            alert("Por favor, insira um CNPJ válido com 14 números.");
+            return;
+        }
+
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('mainDashboard').style.display = 'none';
+        document.getElementById('exportArea').style.display = 'none';
+
+        try {
+            const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
+            if (!res.ok) throw new Error();
+            globalData = await res.json();
+            
+            preencherCampos(globalData);
+            
+            document.getElementById('mainDashboard').style.display = 'grid';
+            document.getElementById('exportArea').style.display = 'flex';
+        } catch (e) {
+            alert("Não encontramos dados para este CNPJ.");
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
+    }
+
+    function preencherCampos(d) {
+        document.getElementById('rz_social').innerText = d.razao_social || "N/A";
+        document.getElementById('nm_fantasia').innerText = d.nome_fantasia || "---";
+        document.getElementById('cnpj_display').innerText = d.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+        
+        // Aplicação da Data com 4 dígitos
+        document.getElementById('dt_abertura').innerText = formatarDataCompleta(d.data_inicio_atividade);
+        document.getElementById('dt_situacao').innerText = formatarDataCompleta(d.data_situacao_cadastral);
+
+        document.getElementById('stt').innerText = d.descricao_situacao_cadastral || "ATIVA";
+        document.getElementById('opt_simples').innerText = d.opcao_pelo_simples === true ? "SIM" : (d.opcao_pelo_simples === false ? "NÃO" : "N/A");
+        document.getElementById('opt_mei').innerText = d.opcao_pelo_mei === true ? "SIM" : (d.opcao_pelo_mei === false ? "NÃO" : "N/A");
+
+        document.getElementById('end_rua').innerText = `${d.logradouro}, ${d.numero} ${d.complemento ? '- ' + d.complemento : ''}`;
+        document.getElementById('end_bairro').innerText = `${d.bairro} | CEP: ${d.cep}`;
+        document.getElementById('end_cidade').innerText = `${d.municipio} / ${d.uf}`;
+        document.getElementById('email_info').innerText = d.email || "Não informado";
+        document.getElementById('tel_info').innerText = d.ddd_telefone_1 || "Não informado";
+
+        document.getElementById('cap_social').innerText = "R$ " + (d.capital_social || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+        document.getElementById('porte_desc').innerText = d.porte || "---";
+        document.getElementById('nat_juridica').innerText = `${d.natureza_juridica_codigo || ''} - ${d.natureza_juridica || ''}`;
+
+        const cArea = document.getElementById('cnae_area');
+        cArea.innerHTML = `<div class="item-box principal"><div class="data-label" style="color:var(--success)">Principal</div><b>${d.cnae_fiscal}</b> - ${d.cnae_fiscal_descricao}</div>`;
+        (d.cnaes_secundarios || []).forEach(c => {
+            cArea.innerHTML += `<div class="item-box"><div class="data-label">Secundário</div><b>${c.codigo}</b> - ${c.descricao}</div>`;
+        });
+
+        const sArea = document.getElementById('socios_area');
+        sArea.innerHTML = "";
+        (d.qsa || []).forEach(s => {
+            sArea.innerHTML += `<div class="item-box"><b>${s.nome_socio}</b><br><span style="color:var(--accent); font-size:0.7rem">${s.qualificacao_socio}</span></div>`;
+        });
+    }
+
+    function limpar() {
+        document.getElementById('cnpjInput').value = "";
+        document.getElementById('mainDashboard').style.display = 'none';
+        document.getElementById('exportArea').style.display = 'none';
+        document.getElementById('cnpjInput').focus();
+        globalData = null;
+    }
+
+    function exportarExcel() {
+        if(!globalData) return;
+        const ws = XLSX.utils.json_to_sheet([flatten(globalData)]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Dados_CNPJ");
+        XLSX.writeFile(wb, `Empresa_${globalData.cnpj}.xlsx`);
+    }
+
+    function flatten(obj, prefix = '') {
+        const result = {};
+        for (let i in obj) {
+            if (typeof obj[i] === 'object' && !Array.isArray(obj[i]) && obj[i] !== null) {
+                Object.assign(result, flatten(obj[i], prefix + i + '_'));
+            } else {
+                result[prefix + i] = Array.isArray(obj[i]) ? JSON.stringify(obj[i]) : obj[i];
+            }
+        }
+        return result;
+    }
+
+    document.getElementById('cnpjInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') buscar(); });
+</script>
+
+</body>
+</html>
